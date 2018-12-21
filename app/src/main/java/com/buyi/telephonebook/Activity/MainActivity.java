@@ -7,6 +7,8 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
 import android.provider.ContactsContract;
 import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
@@ -15,22 +17,26 @@ import android.widget.AdapterView;
 import android.widget.ListView;
 
 
+import com.buyi.telephonebook.ContractBean;
 import com.buyi.telephonebook.R;
 import com.buyi.telephonebook.TelephoneAdapter;
+import com.buyi.telephonebook.Utils.ExcelUtils;
 import com.buyimingyue.framework.Utils.LogUtils;
 import com.buyimingyue.framework.Utils.StringUtils;
+import com.buyimingyue.mymodule.View.Titlebar;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
 
-public class MainActivity extends AppCompatActivity implements View.OnClickListener{
-    private String[] permissions = {Manifest.permission.CALL_PHONE,Manifest.permission.READ_CONTACTS};
-    private List<String> phones = new ArrayList<>();
-    private List<String> names = new ArrayList<>();
+public class MainActivity extends AppCompatActivity implements View.OnClickListener ,Handler.Callback{
+    private String[] permissions = {Manifest.permission.CALL_PHONE,Manifest.permission.READ_CONTACTS,Manifest.permission.WRITE_EXTERNAL_STORAGE,Manifest.permission.READ_EXTERNAL_STORAGE};
     private TelephoneAdapter adapter;
     private ListView lv;
-
+    private List<ContractBean> contactList;
+    private Handler mHandler;
+    private Titlebar titlebar;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -41,10 +47,17 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     protected void initData(Bundle bundle) {
         findViewById(R.id.tv).setOnClickListener(this);
+        contactList = new ArrayList<>();
         lv = (ListView) findViewById(R.id.phone_lv);
+        titlebar = (Titlebar) findViewById(R.id.title_bar);
         adapter = new TelephoneAdapter(this);
         lv.setAdapter(adapter);
-        adapter.setContents(names);
+        adapter.setContents(contactList);
+        mHandler = new Handler(this);
+        titlebar.setBtn_backVisibility(View.INVISIBLE);
+        titlebar.setTitle("电话簿");
+        titlebar.setOther("导入",true);
+        titlebar.setTextColor(R.color.white);
 
     }
 
@@ -53,8 +66,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 Bundle bundle = new Bundle();
-                bundle.putString("name",names.get(position));
-                bundle.putString("phone",phones.get(position));
+                bundle.putSerializable("name",contactList.get(position));
                 Intent intent = new Intent(MainActivity.this,DetialActivity.class);
                 intent.putExtras(bundle);
                 MainActivity.this.startActivity(intent);
@@ -67,12 +79,24 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         switch (v.getId()){
             case R.id.tv:
                 PackageManager pm = getPackageManager();
-                if (pm.checkPermission(Manifest.permission.READ_CONTACTS,this.getPackageName())==PackageManager.PERMISSION_GRANTED)
-                    readContacts();
+                if (pm.checkPermission(Manifest.permission.READ_EXTERNAL_STORAGE,this.getPackageName())==PackageManager.PERMISSION_GRANTED){
+//                    readContacts();
+                    new Thread(new Runnable() {
+                        @Override
+                        public void run() {
+                            String path = "/sdcard/temp/telephone_book.xls";
+                            ExcelUtils.readExcelFile(new File(path),contactList);
+                            mHandler.sendEmptyMessage(1);
+                        }
+                    }).start();
+
+
+                }
                 else {
                     if ( Build.VERSION.SDK_INT>=Build.VERSION_CODES.M)
                         this.requestPermissions(permissions,10);
                 }
+
                 break;
         }
     }
@@ -92,8 +116,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 // 查看该联系人有多少个电话号码。如果没有这返回值为0
                 int phoneCount = cursor.getInt(cursor.getColumnIndex(ContactsContract.Contacts.HAS_PHONE_NUMBER));
                 LogUtils.i("msg","phoneCount = "+phoneCount);
+                ContractBean contractBean = new ContractBean();
                 if (phoneCount>0){
-                    StringBuffer sb = new StringBuffer();
                     // 获得联系人的电话号码列表
                     Cursor phonesCursor = getContentResolver().query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,null,
                             ContactsContract.CommonDataKinds.Phone.CONTACT_ID+ " = " + contactId, null,null);
@@ -101,20 +125,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                         do {
                             // 遍历所有的电话号码
                             String phoneNumber = phonesCursor.getString(phonesCursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER));
-                            sb.append(phoneNumber+",");
+                            contractBean.phones.add(phoneNumber);
                         } while (phonesCursor.moveToNext());
-                    }
-                    String result = sb.toString();
-                    if (StringUtils.isEmpty(result)) {
-                        phones.add("");
-                        continue;
-                    }
-                    if (result.contains(","))
-                       result =  result.substring(0,result.length()-1);
-                    phones.add(result);
-                    LogUtils.i("msg","联系人姓名：" + disPlayName+"\n联系人电话：" + result);;
+                    };
                 }
-                 names.add(disPlayName);
+                contractBean.name=disPlayName;
+                contactList.add(contractBean);
             }while (cursor.moveToNext());
             adapter.notifyDataSetChanged();
         }
@@ -125,5 +141,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         for (int i = 0; i <permissions.length ; i++) {
             if (permissions[i].equals(Manifest.permission.READ_CONTACTS))if (grantResults[i] == PackageManager.PERMISSION_GRANTED)readContacts();
         }
+    }
+
+    @Override
+    public boolean handleMessage(Message msg) {
+        adapter.notifyDataSetChanged();
+        return false;
     }
 }
