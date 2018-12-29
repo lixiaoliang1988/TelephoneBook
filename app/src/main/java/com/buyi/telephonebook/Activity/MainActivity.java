@@ -45,7 +45,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         logicOperate();
     }
 
-    protected void initData(Bundle bundle) {
+protected void initData(Bundle bundle) {
         findViewById(R.id.tv).setOnClickListener(this);
         contactList = new ArrayList<>();
         lv = (ListView) findViewById(R.id.phone_lv);
@@ -58,8 +58,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         titlebar.setTitle("电话簿");
         titlebar.setOther("导入",true);
         titlebar.setTextColor(R.color.white);
-
-    }
+}
 
     protected void logicOperate() {
         lv.setOnItemClickListener(new AdapterView.OnItemClickListener() {
