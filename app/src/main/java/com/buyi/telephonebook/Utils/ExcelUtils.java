@@ -114,6 +114,7 @@ public class ExcelUtils {
 //                    for (Cell cell : row) {
 //                    	System.out.println(cell);
 //                    }
+
                     ContractBean contractBean = new ContractBean();
                     int end = row.getLastCellNum();
                     for (int i = 0; i < end; i++) {
@@ -125,8 +126,13 @@ public class ExcelUtils {
                         Object obj = getValue(cell);
                         if (i == 0)
                             contractBean.name =obj.toString();
-                        else if (i==1)
+                        else {
+                            if (null==obj)
+                                break;
+                            if (StringUtils.isEmpty(obj.toString()))
+                                break;
                             contractBean.phones.add(obj.toString());
+                        }
                         LogUtils.i(obj + "\t");
                     }
                     contactList.add(contractBean);
@@ -142,9 +148,10 @@ public class ExcelUtils {
     public static void write2ExcelFile(String path,List<ContractBean>contactList){
         if (contactList == null||contactList.size()<1)
             return;
+        File excelFile = new File(path);
         try {
             // 同时支持Excel 2003、2007
-            File excelFile = new File(path);
+
             Workbook workbook = null;
             Sheet sheet = null;
             if (excelFile.exists()) {
@@ -156,6 +163,8 @@ public class ExcelUtils {
                     return;
                 sheet= workbook.getSheetAt(0);
             }else {
+                if (!excelFile.getParentFile().exists()||!excelFile.isDirectory())
+                    excelFile.getParentFile().mkdirs();
                 workbook = new HSSFWorkbook();
                 sheet = workbook.createSheet();
             }

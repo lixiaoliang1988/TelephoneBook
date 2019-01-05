@@ -1,6 +1,8 @@
 package com.buyi.telephonebook.Activity;
 
 import android.Manifest;
+import android.app.Activity;
+import android.app.Instrumentation;
 import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.ContentValues;
@@ -11,12 +13,15 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.provider.ContactsContract;
+import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.support.v4.content.FileProvider;
 import android.support.v7.app.AppCompatActivity;
 import android.view.View;
 import android.widget.AdapterView;
@@ -28,6 +33,7 @@ import com.buyi.telephonebook.ContractBean;
 import com.buyi.telephonebook.R;
 import com.buyi.telephonebook.TelephoneAdapter;
 import com.buyi.telephonebook.Utils.ExcelUtils;
+import com.buyi.telephonebook.Utils.GetPathFromUri;
 import com.buyi.telephonebook.View.ImportAndExportDialog;
 import com.buyimingyue.framework.Utils.IntentUtils;
 import com.buyimingyue.framework.Utils.LogUtils;
@@ -40,6 +46,11 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import static com.buyimingyue.framework.Utils.Uri2FileUtils.getDataColumn;
+import static com.buyimingyue.framework.Utils.Uri2FileUtils.isDownloadsDocument;
+import static com.buyimingyue.framework.Utils.Uri2FileUtils.isExternalStorageDocument;
+import static com.buyimingyue.framework.Utils.Uri2FileUtils.isMediaDocument;
+
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener ,Handler.Callback{
     private String[] permissions = {Manifest.permission.CALL_PHONE,Manifest.permission.READ_CONTACTS,Manifest.permission.WRITE_CONTACTS,Manifest.permission.WRITE_EXTERNAL_STORAGE,Manifest.permission.READ_EXTERNAL_STORAGE};
@@ -51,7 +62,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private Titlebar titlebar;
     private ImportAndExportDialog dialog;
     private String importPath = "/sdcard/temp/telephone.xls";
-    private String exportPath = "/sdcard/temp/telephone.xls";
+    private String exportPath = "/sdcard/documents/telephone.xls";
     public final int FILE_SELECT_CODE = 0x031;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -73,7 +84,7 @@ protected void initData(Bundle bundle) {
         mHandler = new Handler(this);
         titlebar.setBtn_backVisibility(View.INVISIBLE);
         titlebar.setTitle("电话簿");
-        titlebar.setOther("导入",true);
+        titlebar.setOther("导入/出",true);
         titlebar.setTextColor(R.color.white);
         titlebar.setOtherOnclick(this);
 }
@@ -247,41 +258,48 @@ protected void initData(Bundle bundle) {
     }
     //向xls文件写入数据
 
-    private View.OnClickListener importListener = new View.OnClickListener() {
+    private View.OnClickListener importListener = new View.OnClickListener() {//导入
         @Override
         public void onClick(View v) {
-            new Thread(()->{
-                excelContactList.clear();
-                if (excelContactList.size()<=0)
-                    ExcelUtils.readExcelFile(new File(importPath),excelContactList);
-                if (excelContactList.size()<=0){
-                    mHandler.sendEmptyMessage(3);
-                    return;
-                }
-                if (contactList.size()<=0)
-                    readContacts();
-                Iterator iterator = excelContactList.iterator();
-                while (iterator.hasNext()){
-                    ContractBean bean = (ContractBean) iterator.next();
-                    boolean isRepetition = false;
-                    for (int i = 0; i <contactList.size(); i++) {
-                        if (bean.name.equals(contactList.get(i).name)) {
-                            iterator.remove();
-                            isRepetition = true;
-                            break;
-                        }
-                    }
-                    if (isRepetition)
-                        continue;
-                    writeToContactBook(bean.name,bean.phones);
-                }
-                mHandler.sendEmptyMessage(4);
-            }).start();
+            chooseFile();
         }
     };
-    private View.OnClickListener exportListener = new View.OnClickListener() {
+    private void importTelephone(){
+        dialog.getProgressView().startMoveToLeft();
+        dialog.getTv().setText(importPath);
+        new Thread(()->{
+            excelContactList.clear();
+            if (excelContactList.size()<=0)
+                ExcelUtils.readExcelFile(new File(importPath),excelContactList);
+            if (excelContactList.size()<=0){
+                mHandler.sendEmptyMessage(3);
+                return;
+            }
+            if (contactList.size()<=0)
+                readContacts();
+            Iterator iterator = excelContactList.iterator();
+            while (iterator.hasNext()){
+                ContractBean bean = (ContractBean) iterator.next();
+                boolean isRepetition = false;
+                for (int i = 0; i <contactList.size(); i++) {
+                    if (bean.name.equals(contactList.get(i).name)) {
+                        iterator.remove();
+                        isRepetition = true;
+                        break;
+                    }
+                }
+                if (isRepetition)
+                    continue;
+                writeToContactBook(bean.name,bean.phones);
+            }
+            mHandler.sendEmptyMessageDelayed(4,500);
+        }).start();
+    }
+    private View.OnClickListener exportListener = new View.OnClickListener() {//导出
         @Override
         public void onClick(View v) {
+            dialog.getTv().setText(exportPath);
+            dialog.getProgressView().startMoveToRight();
             new Thread(()->{
                 contactList.clear();
                 if (contactList.size()<=0)
@@ -311,13 +329,13 @@ protected void initData(Bundle bundle) {
 
                 LogUtils.i("msg","size :"+contactList.size());
                 ExcelUtils.write2ExcelFile(exportPath,contactList);
-                mHandler.sendEmptyMessage(6);
+                mHandler.sendEmptyMessageDelayed(6,500);
             }).start();
         }
     };
     private void chooseFile() {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        //intent.setType(“image/*”);//选择图片
+//        intent.setType("image/*");//选择图片
         //intent.setType(“audio/*”); //选择音频
         //intent.setType(“video/*”); //选择视频 （mp4 3gp 是android支持的视频格式）
         //intent.setType(“video/*;image/*”);//同时选择视频和图片
@@ -325,7 +343,8 @@ protected void initData(Bundle bundle) {
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         //
         try {
-            startActivityForResult(Intent.createChooser(intent, "选择文件"), FILE_SELECT_CODE);
+            startActivityForResult(Intent.createChooser(intent, "File Browser"), FILE_SELECT_CODE);
+//            startActivityForResult(intent, FILE_SELECT_CODE);
         } catch (android.content.ActivityNotFoundException ex) {
             Toast.makeText(this, "亲，木有文件管理器啊-_-!!", Toast.LENGTH_SHORT).show();
         }
@@ -335,12 +354,18 @@ protected void initData(Bundle bundle) {
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == FILE_SELECT_CODE) {
-            Uri uri = data.getData();
-            LogUtils.i("msg", "------->" + getRealFilePath(this,uri));
-            importPath = getRealFilePath(this,uri);
+            if (resultCode == Activity.RESULT_OK) {
+                Uri uri = data.getData();
+                importPath = GetPathFromUri.getPath(this, uri);
+                LogUtils.i("msg", "------->" +importPath );
+                if (!StringUtils.isEmpty(importPath))
+                    importTelephone();
+            }else {
+                ToastUtil.showToast("文件选择失败！",this);
+            }
         }
     }
-    public  String getRealFilePath(final Context context, final Uri uri ) {
+    public  String getRealFilePath(final Context context, final Uri uri ) {//不适合华为
         if ( null == uri ) return null;
         final String scheme = uri.getScheme();
         String data = null;
@@ -349,17 +374,93 @@ protected void initData(Bundle bundle) {
         else if ( ContentResolver.SCHEME_FILE.equals( scheme ) ) {
             data = uri.getPath();
         } else if ( ContentResolver.SCHEME_CONTENT.equals( scheme ) ) {
-            Cursor cursor = context.getContentResolver().query( uri, new String[] { MediaStore.Images.ImageColumns.DATA }, null, null, null );
+            LogUtils.i("msg",uri.getPath());
+            Cursor cursor = context.getContentResolver().query( uri,new String[] { MediaStore.Images.ImageColumns.DATA }, null, null, null );
+//            Cursor cursor = context.getContentResolver().query( uri, new String[] { MediaStore.Images.ImageColumns.DISPLAY_NAME }, null, null, null );
             if ( null != cursor ) {
-                if ( cursor.moveToFirst() ) {
-                    int index = cursor.getColumnIndex( MediaStore.Images.ImageColumns.DATA );
-                    if ( index > -1 ) {
-                        data = cursor.getString( index );
+                boolean is =cursor.moveToFirst();
+                if (  is) {
+                    int  a  = cursor.getColumnCount();
+                    for (int i = 0; i <a  ; i++) {
+                       String b =  cursor.getString(i);
+                       b.trim();
                     }
+//                    int index = cursor.getColumnIndex(  MediaStore.Images.ImageColumns.DISPLAY_NAME );
+//                    if ( index > -1 ) {
+//                        data = cursor.getString( 0 );
+//                    }
                 }
                 cursor.close();
             }
         }
         return data;
     }
+
+    public  String getPath(final Context context, final Uri uri) {
+
+            final boolean isKitKat = Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT ;
+            // DocumentProvider
+            if (isKitKat && DocumentsContract.isDocumentUri (context, uri)) {
+            // ExternalStorageProvider
+            if (isExternalStorageDocument( uri)) {
+            final String docId = DocumentsContract.getDocumentId( uri);
+            final String[] split = docId.split(":" );
+            final String type = split[0];
+            if ("primary" .equalsIgnoreCase(type)) {
+                return Environment.getExternalStorageDirectory() + "/" + split[1];
+            }
+            // TODO handle non-primary volumes
+            }
+            // DownloadsProvider
+            else if (isDownloadsDocument (uri)) {
+                final String id = DocumentsContract.getDocumentId( uri);
+                final Uri contentUri = ContentUris.withAppendedId(Uri. parse("content://downloads/public_downloads"), Long.valueOf(id));
+                return getDataColumn(context, contentUri, null, null );
+            }
+            // MediaProvider
+            else if (isMediaDocument( uri)) {
+                final String docId = DocumentsContract.getDocumentId( uri);
+                final String[] split = docId.split(":" );
+                final String type = split[0];
+                Uri contentUri = null;
+                if ("image" .equals(type)) {
+                     contentUri = MediaStore.Images.Media. EXTERNAL_CONTENT_URI;
+                } else if ("video" .equals(type)) {
+                    contentUri = MediaStore.Video.Media. EXTERNAL_CONTENT_URI;
+                } else if ("audio" .equals(type)) {
+                    contentUri = MediaStore.Audio.Media. EXTERNAL_CONTENT_URI;
+                }
+                final String selection = "_id=?" ;
+                final String[] selectionArgs = new String[] {split[1]};
+                         return getDataColumn(context, contentUri, selection, selectionArgs);
+            }
+            }
+                 // MediaStore (and general)
+             else if ("content" .equalsIgnoreCase(uri .getScheme())) {
+                     return getDataColumn(context, uri, null, null);
+
+            }
+            // File
+            else if ("file" .equalsIgnoreCase(uri .getScheme())) {
+                return uri.getPath();
+            }
+            return null ;
+    }
+    public static String getDataColumn(Context context, Uri uri, String selection, String[] selectionArgs) {
+        Cursor cursor = null;
+        final String column = "_data";
+        final String[] projection = { column };
+        try {
+            cursor = context.getContentResolver().query(uri, projection, selection, selectionArgs, null);
+            if (cursor != null && cursor.moveToFirst()) {
+                final int column_index = cursor.getColumnIndexOrThrow(column);
+                return cursor.getString(column_index);
+            }
+        } finally {
+            if (cursor != null)
+                cursor.close();
+        }
+        return null;
+    }
+
 }

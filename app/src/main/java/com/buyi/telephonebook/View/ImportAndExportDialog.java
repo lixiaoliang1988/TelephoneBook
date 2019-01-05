@@ -19,6 +19,7 @@ public class ImportAndExportDialog extends Dialog {
     private Context context;
     private TextView tv;
     private Button import_btn,export_btn;
+    private MyProgressView progressView;
     public ImportAndExportDialog(@NonNull Context context) {
         this(context,android.R.style.Theme_Translucent_NoTitleBar);
     }
@@ -34,6 +35,8 @@ public class ImportAndExportDialog extends Dialog {
         setCancelable(true);
         import_btn = findViewById(R.id.import_btn);
         export_btn = findViewById(R.id.export_btn);
+        progressView = findViewById(R.id.progress_vw);
+        tv = findViewById(R.id.file_path_tv);
     }
   public void importOnClickListener(View.OnClickListener listener){
         import_btn.setOnClickListener(listener);
@@ -41,4 +44,19 @@ public class ImportAndExportDialog extends Dialog {
   public void exportOnClickListener(View.OnClickListener listener){
         export_btn.setOnClickListener(listener);
   }
+
+    public MyProgressView getProgressView() {
+        return progressView;
+    }
+
+    public TextView getTv() {
+        return tv;
+    }
+
+    @Override
+    public void dismiss() {
+        if (progressView!=null)
+            progressView.stop();
+        super.dismiss();
+    }
 }
